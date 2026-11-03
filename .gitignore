@@ -1,0 +1,20 @@
+# build output
+.build/
+dist/
+*.xcodeproj
+DerivedData/
+
+# test ROMs belong to their authors and are fetched on demand (Scripts/fetch-test-roms.sh); never commit game ROMs, BIOS images or saves
+TestROMs/
+*.gba
+*.gb
+*.gbc
+*.sav
+*.sgstate
+bios.bin
+
+# old experiments kept locally only
+_legacy/
+
+# macOS
+.DS_Store
