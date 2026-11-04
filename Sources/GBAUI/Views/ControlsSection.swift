@@ -60,10 +60,14 @@ struct ControlsSection: View {
                     .padding(.horizontal, 12).padding(.vertical, 5)
                     .background { Capsule().fill(active ? Color.white : Color.clear) }
                     .overlay { Capsule().strokeBorder(Color.white.opacity(active ? 0 : 0.3), lineWidth: 1) }
+                    .contentShape(Capsule())            // the whole capsule is the click target; an empty binding is only a small "—"
             }
             .buttonStyle(.plain)
-            Button(action: clear) { Image(systemName: "xmark").font(.system(size: 9)).foregroundStyle(Ed.dim) }
-                .buttonStyle(.plain).opacity(empty ? 0 : 1).help("Remove binding")
+            Button(action: clear) {
+                Image(systemName: "xmark").font(.system(size: 9)).foregroundStyle(Ed.dim)
+                    .frame(width: 18, height: 24).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).opacity(empty ? 0 : 1).allowsHitTesting(!empty).help("Remove binding")
         }
         .frame(width: 150)
     }

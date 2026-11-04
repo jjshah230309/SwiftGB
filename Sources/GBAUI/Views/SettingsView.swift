@@ -49,7 +49,7 @@ public struct SettingsView: View {
                         row("Autosave every", settings.autosave.enabled ? "Currently \(settings.autosave.summary)" : "Autosave is off") {
                             HStack(spacing: 10) {
                                 TextField("", value: Binding(get: { settings.autosave.value }, set: { settings.autosave.value = min(max($0, 1), 999) }), format: .number)
-                                    .textFieldStyle(.plain).multilineTextAlignment(.trailing).font(Ed.body(15))
+                                    .textFieldStyle(.plain).multilineTextAlignment(.trailing).font(Ed.body(15)).foregroundStyle(.white)
                                     .frame(width: 56).padding(.vertical, 5).padding(.horizontal, 8)
                                     .overlay { Capsule().strokeBorder(Ed.hairline) }
                                 MenuChoice(options: AutosaveSchedule.Unit.allCases.map { ($0, $0.label) }, selection: $settings.autosave.unit)
