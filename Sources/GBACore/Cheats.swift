@@ -72,27 +72,3 @@ public enum CheatParser {
         return .success(writes)
     }
 }
-
-/// Applies a set of cheat writes to memory. Run once per frame.
-public final class CheatEngine {
-    private var writes = [CheatWrite]()
-    public init() {}
-    public var isEmpty: Bool { writes.isEmpty }
-    public func set(_ writes: [CheatWrite]) { self.writes = writes }
-
-    func apply(to bus: Bus) {
-        for w in writes {
-            let a = w.address
-            // Only RAM and I/O-free regions: a stray code must not poke the cartridge, BIOS or hardware registers.
-            switch a >> 24 {
-            case 0x2, 0x3, 0x5, 0x6, 0x7: break
-            default: continue
-            }
-            switch w.size {
-            case 1: bus.poke8(a, UInt8(truncatingIfNeeded: w.value))
-            case 2: bus.poke16(a, UInt16(truncatingIfNeeded: w.value))
-            default: bus.poke32(a, w.value)
-            }
-        }
-    }
-}

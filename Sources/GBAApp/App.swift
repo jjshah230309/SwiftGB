@@ -118,6 +118,13 @@ struct AppCommands: Commands {
             .disabled(!model.isPlaying)
             Button("Load Autosave") { model.loadAutosave() }
                 .keyboardShortcut("l").disabled(!model.isPlaying || model.autosaveDate == nil)
+            Button("Load State from File…") { model.loadStateFile() }.disabled(!model.isPlaying)
+            Button("Save State to File…") { model.saveStateFile() }.disabled(!model.isPlaying)
+            Divider()
+            Button("Import Save File…") { model.importSave() }
+                .keyboardShortcut("i", modifiers: [.command, .shift]).disabled(!model.isPlaying)
+            Button("Export Save File…") { model.exportSave() }
+                .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(!model.isPlaying)
             Divider()
             Button(model.isRecording ? "Stop Recording" : "Start Recording") { model.toggleRecording() }
                 .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(!model.isPlaying)

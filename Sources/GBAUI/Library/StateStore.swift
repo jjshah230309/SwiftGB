@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import GBACore
 
 /// Save-state slots and cheat lists, kept per game in the app's own folder.
 public struct GameStorage {
@@ -117,6 +118,21 @@ public struct Cheat: Identifiable, Codable, Equatable, Sendable {
     public var name: String
     public var code: String
     public var enabled = true
+    public var format: CheatFormat = .auto
+
+    public init(id: UUID = UUID(), name: String, code: String, enabled: Bool = true, format: CheatFormat = .auto) {
+        self.id = id; self.name = name; self.code = code; self.enabled = enabled; self.format = format
+    }
+
+    // Cheat lists saved before formats existed have no "format" key.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        code = try c.decode(String.self, forKey: .code)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        format = try c.decodeIfPresent(CheatFormat.self, forKey: .format) ?? .auto
+    }
 }
 
 /// PNG data for an ARGB frame, scaled up by whole pixels so it stays sharp.
@@ -134,4 +150,11 @@ enum FrameImage {
             return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
         }
     }
+}
+
+/// The on-disk form of a save state: the core's snapshot, lzfse-compressed (the same as the slots and autosaves).
+enum StateCodec {
+    static func encodeFile(_ state: Data) throws -> Data { try (state as NSData).compressed(using: .lzfse) as Data }
+    /// A file chosen by hand might be compressed (ours) or a raw snapshot; the core's own checks reject anything else.
+    static func decodeFile(_ file: Data) -> Data { (try? (file as NSData).decompressed(using: .lzfse) as Data) ?? file }
 }

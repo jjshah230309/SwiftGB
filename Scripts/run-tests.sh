@@ -100,7 +100,7 @@ printf "%-34s %-9s %s\n" "UI engine (speed, autosave, record)" "$res" "$detail"
 out=$("$HARNESS" --bios-selftest 2>&1)
 if grep -q "^PASS" <<<"$out"; then res="PASS"; detail="$(grep -c '  ok ' <<<"$out") checks"; else res="FAIL*"; fail=1; detail=$(grep FAIL <<<"$out" | head -1); fi
 printf "%-34s %-9s %s\n" "Native BIOS maths self-check" "$res" "$detail"
-for st in "ppu|PPU scene self-check" "hw|Timers, DMA, LCD, keypad check" "apu|Sound hardware check" "services|BIOS services, EEPROM, RTC check" "state|Save states and rewind check" "control|Controls and cheats check" "gb|Game Boy hardware check" "link|Link cable check"; do
+for st in "ppu|PPU scene self-check" "hw|Timers, DMA, LCD, keypad check" "apu|Sound hardware check" "services|BIOS services, EEPROM, RTC check" "state|Save states and rewind check" "control|Controls and cheats check" "cheat|All cheat-device formats check" "gb|Game Boy hardware check" "link|Link cable check"; do
   flag=${st%%|*}; label=${st#*|}
   out=$("$HARNESS" --$flag-selftest 2>&1)
   if grep -q "^PASS" <<<"$out"; then res="PASS"; detail="$(grep -c '  ok ' <<<"$out") checks"; else res="FAIL*"; fail=1; detail=$(grep -m1 "FAIL" <<<"$out"); fi

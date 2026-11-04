@@ -358,6 +358,7 @@ if args.contains("--bench-audio") { exit(benchAudio()) }
 if args.contains("--services-selftest") { exit(servicesSelfTest()) }
 if args.contains("--state-selftest") { exit(stateSelfTest()) }
 if args.contains("--control-selftest") { exit(controlSelfTest()) }
+if args.contains("--cheat-selftest") { exit(cheatSelfTest()) }
 if args.contains("--gb-selftest") { exit(gbSelfTest()) }
 if args.contains("--link-selftest") { exit(linkSelfTest()) }
 if args.contains("--apu-selftest") { exit(apuSelfTest()) }

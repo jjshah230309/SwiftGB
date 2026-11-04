@@ -7,8 +7,10 @@ struct CheatsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var code = ""
+    @State private var format: CheatFormat = .auto
+    private var isGameBoy: Bool { model.activeGame?.system.isGameBoy == true }
 
-    private var problem: String? { code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : model.validate(code: code) }
+    private var problem: String? { code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : model.validate(code: code, format: format) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -37,6 +39,7 @@ struct CheatsView: View {
                                 Button { model.removeCheat(cheat.id) } label: { Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Ed.dim) }
                                     .buttonStyle(.plain).help("Delete")
                             }
+                            if !isGameBoy && cheat.format != .auto { Text(cheat.format.shortTitle).font(Ed.body(11)).foregroundStyle(Ed.dim) }
                             Text(cheat.code.split(whereSeparator: \.isNewline).joined(separator: "  ·  "))
                                 .font(.system(size: 11, design: .monospaced)).foregroundStyle(Ed.dim).lineLimit(2)
                             if let why = model.cheatErrors[cheat.id] { Text(why).font(Ed.body(12)).foregroundStyle(.white.opacity(0.8)) }
@@ -52,15 +55,22 @@ struct CheatsView: View {
                 TextField("Name", text: $name).textFieldStyle(.plain).font(Ed.body(15))
                     .padding(10).overlay(RoundedRectangle(cornerRadius: 0).strokeBorder(Ed.hairline))
                 TextEditor(text: $code).font(.system(size: 13, design: .monospaced)).scrollContentBackground(.hidden)
-                    .frame(height: 78).padding(6).overlay(RoundedRectangle(cornerRadius: 0).strokeBorder(Ed.hairline))
+                    .frame(height: 110).padding(6).overlay(RoundedRectangle(cornerRadius: 0).strokeBorder(Ed.hairline))
                     .overlay(alignment: .topLeading) {
                         if code.isEmpty { Text(model.activeGame?.system.isGameBoy == true ? "01FFD8C0" : "03007E00 000000FF").font(.system(size: 13, design: .monospaced)).foregroundStyle(Ed.dim).padding(11).allowsHitTesting(false) }
                     }
-                Text(problem ?? model.cheatFormatHint)
+                if !isGameBoy {
+                    Picker("Format", selection: $format) {
+                        ForEach(CheatFormat.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.menu).font(Ed.body(13))
+                }
+                Text(problem ?? model.recognition(of: code, format: format) ?? model.cheatFormatHint)
                     .font(Ed.body(12)).foregroundStyle(problem == nil ? Ed.dim : Color.white)
+                    .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()
-                    Button("Add") { model.addCheat(name: name, code: code); name = ""; code = "" }
+                    Button("Add") { model.addCheat(name: name, code: code, format: format); name = ""; code = ""; format = .auto }
                         .buttonStyle(GhostPillStyle(compact: true))
                         .disabled(problem != nil || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }

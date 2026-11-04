@@ -48,6 +48,8 @@ public protocol EmulatorCore: AnyObject {
 
     /// Replace the active cheats with these writes (applied once per frame).
     func setCheats(_ writes: [CheatWrite])
+    /// Replace the active cheats with a compiled list from any supported cheat device (Game Boy Advance only).
+    func setCheatProgram(_ program: CheatProgram)
 
     /// Plug a link cable in (or with nil, unplug it).
     func attachLink(_ link: SerialLink?)
@@ -59,6 +61,7 @@ public extension EmulatorCore {
     func saveState() -> Data? { nil }
     func loadState(_ data: Data) -> Bool { false }
     func setCheats(_ writes: [CheatWrite]) {}
+    func setCheatProgram(_ program: CheatProgram) {}
     func attachLink(_ link: SerialLink?) {}
 }
 

@@ -34,7 +34,8 @@ public final class GBAConsole: EmulatorCore {
         if let kept { system.bus.cart.loadSave(kept); if wasDirty { system.bus.cart.markDirty() } }
     }
 
-    public func setCheats(_ writes: [CheatWrite]) { cheats.set(writes) }
+    public func setCheats(_ writes: [CheatWrite]) { cheats.set(.fromWrites(writes), bus: system.bus) }
+    public func setCheatProgram(_ program: CheatProgram) { cheats.set(program, bus: system.bus) }
     public func attachLink(_ link: SerialLink?) { linkAttached = link; system.bus.link = link }
 
     public func saveState() -> Data? { system.saveState() }

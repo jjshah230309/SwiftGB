@@ -8,7 +8,7 @@ The emulation cores are original code, written from public hardware documentatio
 
 - **Game Boy Advance:** ARM7TDMI (ARM and Thumb), full video (all modes, sprites, windows, blending), four timers, four DMA channels, all six sound channels, SRAM / Flash / EEPROM saves, the cartridge clock, and the BIOS services games rely on.
 - **Game Boy and Game Boy Color:** SM83 CPU, MBC1/2/3 (with clock)/5, original and Color video, double-speed mode, HDMA, sound, battery saves.
-- **App features:** save states (9 slots) and autosave, rewind, cheats, screenshots, MP4 recording, fast-forward from 2× up to unlimited, controller support with remapping, a link cable over the local network (GBA up to four players, Game Boy two), and a statistics overlay.
+- **App features:** save states (9 slots, plus load/save to any file) and autosave, importing and exporting `.sav` files, rewind, cheats for every GBA cheat device (below), screenshots, MP4 recording, fast-forward from 2× up to unlimited, controller support with remapping, a link cable over the local network (GBA up to four players, Game Boy two), and a statistics overlay.
 - **Display:** drawn natively at any size up to 16K, any refresh rate up to 240 Hz, with an optional unlimited presentation rate that is independent of emulation speed.
 
 ## Requirements
@@ -20,7 +20,7 @@ The emulation cores are original code, written from public hardware documentatio
 
 ```sh
 Scripts/build-app.sh            # builds .build/SwiftGB.app (release, ad-hoc signed)
-Scripts/build-app.sh --dmg      # also makes .build/SwiftGB-1.0.1.dmg
+Scripts/build-app.sh --dmg      # also makes .build/SwiftGB-1.0.2.dmg
 open .build/SwiftGB.app
 ```
 
@@ -39,7 +39,7 @@ Add games with **File ▸ Open ROM…** (⌘O) or drop `.gba`, `.gb` and `.gbc` 
 | Fast-forward (hold) | Tab |
 | Rewind (hold) | W |
 
-Everything can be remapped in Settings ▸ Controls. Commands in the menus all have ⌘ shortcuts: Save State ⌥⌘1–9, Load State ⌘1–9, Screenshot ⌥⌘S, Record ⇧⌘R, Cheats ⌘K, Link ⌘J, Statistics ⌥⌘T, Full Screen ⌃⌘F, Window size ⌘= ⌘- ⌘0.
+Everything can be remapped in Settings ▸ Controls. Commands in the menus all have ⌘ shortcuts: Save State ⌥⌘1–9, Load State ⌘1–9, Screenshot ⌥⌘S, Record ⇧⌘R, Cheats ⌘K, Import Save ⇧⌘I, Export Save ⇧⌘E, Link ⌘J, Statistics ⌥⌘T, Full Screen ⌃⌘F, Window size ⌘= ⌘- ⌘0.
 
 ## Tests
 
@@ -66,6 +66,22 @@ The suite covers the GBA CPU, memory, BIOS, DMA and save test ROMs (jsmolka), Bl
 
 ## Known gaps
 
-Game Boy sound has three failing Blargg tests (wave RAM quirks), the OAM corruption bug is not modelled, and a few rare Game Boy mappers (MBC6/7, HuC, MMM01) are not supported. GBA timing is approximate (no cartridge prefetch buffer), the BIOS sound-driver calls are not implemented, and cheats support only plain 8/16/32-bit write codes. The network link has been tested on loopback and in memory, not yet across two machines.
+Game Boy sound has three failing Blargg tests (wave RAM quirks), the OAM corruption bug is not modelled, and a few rare Game Boy mappers (MBC6/7, HuC, MMM01) are not supported. GBA timing is approximate (no cartridge prefetch buffer), the BIOS sound-driver calls are not implemented. See *Cheats* for what is and isn't understood. The network link has been tested on loopback and in memory, not yet across two machines.
 
 No licence has been chosen yet.
+
+## Cheats
+
+Press ⌘K while a game is running. The format is detected from the text, or pick one yourself:
+
+| Device | Raw | Encrypted |
+|---|---|---|
+| GameShark Advance / Action Replay v1-v2 | 8/16/32-bit writes, group writes (`3000cccc`), ROM patches (`6…`), 16-bit if-equal (`D…`), multi-line if-equal (`E0zz…`) | yes |
+| Action Replay v3 | 8/16/32-bit writes and fills, pointer writes, add codes, I/O writes, every if/else comparison (equal, not-equal, signed and unsigned less/greater, AND) in one-line, two-line, block and disable forms, "always" skips, slides, end/run-all codes | yes |
+| CodeBreaker | `3` `8` `6` writes, `4` slides, `7` `A` conditionals, `D0000020` button check | no (see below) |
+
+Master/hook/ID codes are accepted and ignored (cheats are applied once per frame, no hook needed), as are codes that only act while the device's own button is held (there is none). Not supported, and refused with a reason rather than guessed: CodeBreaker codes that start with `9` (their scrambling isn't published anywhere I could verify) and Action Replay v3 ROM patches (the sources disagree on how the address maps into the ROM). Game Boy / Color cheats are GameShark `01VVLLHH`.
+
+The encryption itself is written from the published description of the algorithm. The two 256-byte lookup tables the devices use to derive new keys after a `DEADFACE` code are fixed constants copied from Parasyte's GPL-licensed GSAcrypt; they sit alone in `Sources/GBACore/CheatTables.swift`. Everything else is original.
+
+Details that were ambiguous in the documentation and so are my best reading: the number of bytes an AR v3 fill writes (`x + 1`), how far a CodeBreaker slide's address steps (twice `iiii`, for 16-bit values), and that a conditional counts code lines.

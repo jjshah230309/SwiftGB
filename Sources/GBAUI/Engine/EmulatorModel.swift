@@ -375,6 +375,83 @@ public final class EmulatorModel {
         }
     }
 
+    // MARK: save files
+
+    /// Replace the game's save with a `.sav` from elsewhere (another emulator, a cartridge dumper, a backup) and restart the
+    /// game so it reads it. The save that was there is copied to the app's Saves/Backups folder first.
+    public func importSave() {
+        guard let session, let game = activeGame else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Import a save file for \(game.title)"
+        panel.message = "Choose a .sav (or .srm) file. The game restarts so it can read it."
+        panel.allowedContentTypes = []
+        panel.allowsOtherFileTypes = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { show("Couldn't read that file"); return }
+        guard data.count <= 0x40_0000 else { show("That file is too big to be a save"); return }
+        SaveStore.backupExisting(for: game)
+        SaveStore.write(data, for: game)
+        session.perform { [weak self] core, _ in
+            let model = self
+            core.loadSave(data)
+            core.reset()
+            Task { @MainActor in model?.show("Imported \(url.lastPathComponent)") }
+        }
+        if isPaused { togglePause() }
+    }
+
+    /// Copy the game's current save to a file of the player's choosing.
+    public func exportSave() {
+        guard let session, let game = activeGame else { return }
+        session.perform { [weak self] core, _ in
+            let model = self
+            if let fresh = core.takeSaveIfChanged() { SaveStore.write(fresh, for: game) }
+            Task { @MainActor in
+                guard let data = SaveStore.load(for: game) else { model?.show("This game hasn't saved anything yet"); return }
+                let panel = NSSavePanel()
+                panel.title = "Export the save for \(game.title)"
+                panel.nameFieldStringValue = game.url.deletingPathExtension().lastPathComponent + ".sav"
+                guard panel.runModal() == .OK, let url = panel.url else { return }
+                model?.show((try? data.write(to: url, options: .atomic)) != nil ? "Exported the save" : "Couldn't write the file")
+            }
+        }
+    }
+
+    /// Load a save state from any file (a copy of one saved earlier, or from a backup).
+    public func loadStateFile() {
+        guard let session, let game = activeGame else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Load a save state for \(game.title)"
+        panel.allowedContentTypes = []
+        panel.allowsOtherFileTypes = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url, let state = try? Data(contentsOf: url) else { return }
+        if isPaused { togglePause() }
+        session.perform { [weak self] core, _ in
+            let model = self
+            let ok = core.loadState(StateCodec.decodeFile(state))
+            Task { @MainActor in model?.show(ok ? "Loaded \(url.lastPathComponent)" : "That state doesn't fit this game") }
+        }
+    }
+
+    /// Write the machine's current state to a file of the player's choosing.
+    public func saveStateFile() {
+        guard let session, let game = activeGame else { return }
+        session.perform { [weak self] core, _ in
+            let model = self
+            let state = core.saveState()
+            Task { @MainActor in
+                guard let state else { model?.show("This core can't save states"); return }
+                let panel = NSSavePanel()
+                panel.title = "Save a state of \(game.title)"
+                panel.nameFieldStringValue = game.url.deletingPathExtension().lastPathComponent + ".sgstate"
+                guard panel.runModal() == .OK, let url = panel.url else { return }
+                model?.show((try? StateCodec.encodeFile(state).write(to: url, options: .atomic)) != nil ? "Saved the state" : "Couldn't write the file")
+            }
+        }
+    }
+
     // MARK: window size
 
     private var gameWindow: NSWindow? { NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain } }
@@ -461,11 +538,11 @@ public final class EmulatorModel {
     public var cheatFormatHint: String {
         activeGame?.system.isGameBoy == true
             ? "One code per line, GameShark style: 01VVLLHH writes byte VV to address HHLL (cartridge RAM, work RAM or high RAM)."
-            : "One code per line: 0AAAAAAA 000000XX (byte), 1AAAAAAA 0000XXXX (halfword), 2AAAAAAA XXXXXXXX (word). Encrypted codes aren't supported."
+            : "One code per line, two groups of eight digits. GameShark Advance, Action Replay v1-v3 (plain or encrypted) and CodeBreaker (8 + 4 digits) all work; the format is detected unless you choose one."
     }
 
-    public func addCheat(name: String, code: String) {
-        cheats.append(Cheat(name: name.isEmpty ? "Cheat \(cheats.count + 1)" : name, code: code))
+    public func addCheat(name: String, code: String, format: CheatFormat = .auto) {
+        cheats.append(Cheat(name: name.isEmpty ? "Cheat \(cheats.count + 1)" : name, code: code, format: format))
         cheatsChanged()
     }
 
@@ -481,9 +558,19 @@ public final class EmulatorModel {
     }
 
     /// Check a code without adding it, for live feedback in the editor.
-    public func validate(code: String) -> String? {
-        if case .failure(let e) = CheatParser.parse(code, gameBoy: activeGame?.system.isGameBoy ?? false) { return e.description }
+    public func validate(code: String, format: CheatFormat = .auto) -> String? {
+        if activeGame?.system.isGameBoy ?? false {
+            if case .failure(let e) = CheatParser.parse(code, gameBoy: true) { return e.description }
+            return nil
+        }
+        if case .failure(let e) = CheatCompiler.compile(code, format: format) { return e.description }
         return nil
+    }
+
+    /// What the text was recognised as, plus anything that was understood but can't do anything here.
+    public func recognition(of code: String, format: CheatFormat = .auto) -> String? {
+        guard activeGame?.system.isGameBoy != true, case .success(let p) = CheatCompiler.compile(code, format: format), !p.isEmpty else { return nil }
+        return ([format == .auto ? "Recognised as \(p.format.shortTitle)." : nil].compactMap { $0 } + p.notes).joined(separator: "\n")
     }
 
     private func cheatsChanged() {
@@ -493,15 +580,26 @@ public final class EmulatorModel {
 
     private func applyCheats() {
         var writes = [CheatWrite]()
+        var programs = [CheatProgram]()
         var errors = [UUID: String]()
+        let gameBoy = activeGame?.system.isGameBoy ?? false
         for cheat in cheats where cheat.enabled {
-            switch CheatParser.parse(cheat.code, gameBoy: activeGame?.system.isGameBoy ?? false) {
-            case .success(let w): writes += w
-            case .failure(let e): errors[cheat.id] = e.description
+            if gameBoy {
+                switch CheatParser.parse(cheat.code, gameBoy: true) {
+                case .success(let w): writes += w
+                case .failure(let e): errors[cheat.id] = e.description
+                }
+            } else {
+                switch CheatCompiler.compile(cheat.code, format: cheat.format) {
+                case .success(let p): programs.append(p)
+                case .failure(let e): errors[cheat.id] = e.description
+                }
             }
         }
         cheatErrors = errors
-        let active = writes
-        session?.perform { core, _ in core.setCheats(active) }
+        let active = writes, program = CheatProgram.join(programs)
+        session?.perform { core, _ in
+            if gameBoy { core.setCheats(active) } else { core.setCheatProgram(program) }
+        }
     }
 }

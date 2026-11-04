@@ -36,4 +36,14 @@ enum SaveStore {
         guard let target else { NSLog("SwiftGB: no writable place for the save of \(game.title)"); return }
         do { try data.write(to: target, options: .atomic) } catch { NSLog("SwiftGB: couldn't write save \(target.path): \(error)") }
     }
+
+    /// Copy the save that is there now into Saves/Backups, so importing another one can always be undone.
+    static func backupExisting(for game: Game) {
+        guard let current = load(for: game) else { return }
+        let dir = fallbackDirectory().appendingPathComponent("Backups", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss"; f.locale = Locale(identifier: "en_US_POSIX")
+        let name = game.url.deletingPathExtension().lastPathComponent + "-" + f.string(from: Date()) + ".sav"
+        try? current.write(to: dir.appendingPathComponent(name), options: .atomic)
+    }
 }

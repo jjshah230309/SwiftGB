@@ -482,6 +482,12 @@ if only == nil || only == "storage" {
     check("the newest autosave is current", hstore.readAutosave() == Data("state 10".utf8) && entries.first?.load() == Data("state 10".utf8))
     check("the previous ones are kept (newest first), up to the limit", entries.count == GameStorage.autosaveHistoryLimit + 1 && entries[1].load() == Data("state 9".utf8) && entries[2].load() == Data("state 8".utf8), "\(entries.count) kept")
     check("the oldest ones are pruned", !entries.contains { $0.load() == Data("state 1".utf8) })
+    // Cheat lists written before formats existed must still load.
+    let oldJSON = Data(#"[{"id":"6F1E1B0C-5B58-4B52-9C55-3A0E3C3D0E11","name":"Old","code":"03007E00 000000FF","enabled":true}]"#.utf8)
+    let decoded = try? JSONDecoder().decode([Cheat].self, from: oldJSON)
+    check("cheat lists saved before formats existed still load", decoded?.first?.name == "Old" && decoded?.first?.format == .auto)
+    let round = (try? JSONEncoder().encode([Cheat(name: "N", code: "x", format: .codeBreaker)])).flatMap { try? JSONDecoder().decode([Cheat].self, from: $0) }
+    check("a cheat's chosen format is remembered", round?.first?.format == .codeBreaker)
 }
 
 // MARK: rendering
