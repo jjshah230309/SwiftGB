@@ -389,10 +389,32 @@ if only == nil || only == "autosave" {
         check("an autosave about every second (3 in 3.6 s)", beforeStop.count == 3 && beforeStop.allSatisfy { !$0.1 }, "\(beforeStop.count) saves")
         s.stop()
         let all = got.snapshot
-        check("one more, flagged final, as the session ends", all.count == 4 && all.last?.1 == true, "\(all.count) saves, last final=\(all.last?.1 ?? false)")
+        check("a session shorter than the minimum writes no final autosave", all.count == 3 && all.allSatisfy { !$0.1 }, "\(all.count) saves")
         let fresh = GBAConsole(rom: rom)
         check("every autosave loads into a fresh machine", all.allSatisfy { fresh.loadState($0.0) })
         check("autosaves differ as the game advances", Set(all.map { $0.0 }).count == all.count)
+    }
+    do {
+        EmulationSession.minimumSessionForExitAutosave = 0.5
+        let s = newSession(StubCore())
+        let got = Collector()
+        s.onAutosave = { got.add($0, $1) }
+        s.setAutosave(interval: 3600)
+        s.start()
+        Thread.sleep(forTimeInterval: 1.0)
+        s.stop()
+        check("a session that has run long enough does write its final autosave on exit", got.snapshot.count == 1 && got.snapshot[0].1, "\(got.snapshot.count) saves")
+        EmulationSession.minimumSessionForExitAutosave = 30
+    }
+    do {
+        let s = newSession(StubCore())
+        let got = Collector()
+        s.onAutosave = { got.add($0, $1) }
+        s.setAutosave(interval: 3600)
+        s.start()
+        Thread.sleep(forTimeInterval: 1.0)
+        s.stop()
+        check("leaving a session that only just started writes no autosave (it must not replace a good one)", got.snapshot.isEmpty, "\(got.snapshot.count) saves")
     }
     do {
         let s = newSession(GBAConsole(rom: rom))
@@ -453,6 +475,13 @@ if only == nil || only == "storage" {
     check("a new autosave replaces the old one", store.readAutosave() == newer)
     let other = GameStorage(game: Game(system: .gb, title: "Other", gameCode: "ABCD", path: "/x/other.gb"))
     check("each game has its own autosave", other.readAutosave() == nil)
+    // history: nothing is lost when a new autosave is written
+    let hstore = GameStorage(game: Game(system: .gba, title: "History", gameCode: "HIST", path: "/x/h.gba"))
+    for i in 1...10 { _ = hstore.writeAutosave(Data("state \(i)".utf8)); Thread.sleep(forTimeInterval: 0.01) }
+    let entries = hstore.autosaveEntries()
+    check("the newest autosave is current", hstore.readAutosave() == Data("state 10".utf8) && entries.first?.load() == Data("state 10".utf8))
+    check("the previous ones are kept (newest first), up to the limit", entries.count == GameStorage.autosaveHistoryLimit + 1 && entries[1].load() == Data("state 9".utf8) && entries[2].load() == Data("state 8".utf8), "\(entries.count) kept")
+    check("the oldest ones are pruned", !entries.contains { $0.load() == Data("state 1".utf8) })
 }
 
 // MARK: rendering

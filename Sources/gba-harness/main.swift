@@ -166,11 +166,15 @@ func writeWAV(_ path: String, _ pcm: [Int16], rate: Int) {
     print(String(format: "  peak %.1f%%   clipped samples %d   DC offset %.1f   silent stretches over 0.25 s: %d", Double(peak) / 327.68, clipped, dc, silentRuns))
 }
 
-func renderFrames(path: String, frames: Int, out: String?, keys: UInt16, script: [(Int, UInt16)] = [], shots: [Int] = [], saveIn: String? = nil, saveOut: String? = nil, wav: String? = nil) -> Int32 {
+func renderFrames(path: String, frames: Int, out: String?, keys: UInt16, script: [(Int, UInt16)] = [], shots: [Int] = [], saveIn: String? = nil, saveOut: String? = nil, wav: String? = nil, stateIn: String? = nil) -> Int32 {
     guard let rom = FileManager.default.contents(atPath: path) else { print("cannot read \(path)"); return 2 }
     let core = GBAConsole(rom: rom)
     core.setKeys(GBAKeys(rawValue: keys))
     if let saveIn, let d = FileManager.default.contents(atPath: saveIn) { core.loadSave(d); print("loaded save file (\(d.count) bytes)") }
+    if let stateIn, let packed = FileManager.default.contents(atPath: stateIn) {
+        let raw = (try? (packed as NSData).decompressed(using: .lzfse) as Data) ?? packed
+        print("state file: \(packed.count) bytes packed, \(raw.count) raw; loads: \(core.loadState(raw))")
+    }
     let audioScratch = UnsafeMutablePointer<Int16>.allocate(capacity: 2 * 4096); defer { audioScratch.deallocate() }
     var pcm = [Int16]()
     let n = core.screenWidth * core.screenHeight
@@ -342,7 +346,9 @@ if let rom = args.first(where: { $0.lowercased().hasSuffix(".gba") }), let fi = 
     if let i = args.firstIndex(of: "--save-in"), i + 1 < args.count { saveIn = args[i + 1] }
     if let i = args.firstIndex(of: "--save-out"), i + 1 < args.count { saveOut = args[i + 1] }
     if let i = args.firstIndex(of: "--wav"), i + 1 < args.count { wav = args[i + 1] }
-    exit(renderFrames(path: rom, frames: frames, out: out, keys: keys, script: script, shots: shots, saveIn: saveIn, saveOut: saveOut, wav: wav))
+    var stateIn: String? = nil
+    if let i = args.firstIndex(of: "--state-in"), i + 1 < args.count { stateIn = args[i + 1] }
+    exit(renderFrames(path: rom, frames: frames, out: out, keys: keys, script: script, shots: shots, saveIn: saveIn, saveOut: saveOut, wav: wav, stateIn: stateIn))
 }
 if args.contains("--bios-selftest") { exit(biosSelfTest()) }
 if args.contains("--ppu-selftest") { exit(ppuSelfTest()) }

@@ -26,6 +26,8 @@ public final class EmulationSession: @unchecked Sendable {
     private let finished = DispatchSemaphore(value: 0)
     private let rewindBuffer = RewindBuffer()
     public private(set) var measuredFPS = 0.0
+    /// Seconds a session must have run before leaving it writes an autosave.
+    public nonisolated(unsafe) static var minimumSessionForExitAutosave: TimeInterval = 30
     private var stats = FrameStats()
     private var recorder: VideoRecorder?
     /// Instruments shows these intervals (subsystem dev.swiftgb) when profiling: the cost of each frame and of sound hand-off.
@@ -89,6 +91,7 @@ public final class EmulationSession: @unchecked Sendable {
 
     private func run() {
         defer { finished.signal() }
+        let startedAt = Date()
         let w = core.screenWidth, h = core.screenHeight
         let fb = UnsafeMutablePointer<UInt32>.allocate(capacity: w * h)
         fb.initialize(repeating: 0xFF00_0000, count: w * h)
@@ -179,6 +182,7 @@ public final class EmulationSession: @unchecked Sendable {
         }
         if let data = core.takeSaveIfChanged() { onSave?(data) }
         lock.lock(); let finalAutosave = autosaveInterval != nil; lock.unlock()
-        if finalAutosave, let state = core.saveState() { onAutosave?(state, true) }
+        // A session that only just started has nothing worth keeping, and must not push out a good autosave.
+        if finalAutosave, Date().timeIntervalSince(startedAt) >= EmulationSession.minimumSessionForExitAutosave, let state = core.saveState() { onAutosave?(state, true) }
     }
 }

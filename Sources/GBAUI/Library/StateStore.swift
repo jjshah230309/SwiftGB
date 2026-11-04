@@ -44,21 +44,50 @@ public struct GameStorage {
     }
 
     // MARK: autosave
+    // The newest autosave is autosave.sgstate. Each time a new one is written the old one is kept as autosave-<time>.sgstate
+    // (the eight newest are kept), so one bad moment (a session that barely started, a failed load) can never destroy good progress.
     private var autosaveURL: URL { folder("States").appendingPathComponent("autosave.sgstate") }
+    public static let autosaveHistoryLimit = 8
+
+    private func historyURLs() -> [URL] {
+        let dir = folder("States")
+        let all = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        return all.filter { $0.lastPathComponent.hasPrefix("autosave-") && $0.pathExtension == "sgstate" }.sorted { $0.lastPathComponent > $1.lastPathComponent }
+    }
 
     @discardableResult
     public func writeAutosave(_ state: Data) -> Bool {
         guard let packed = try? (state as NSData).compressed(using: .lzfse) as Data else { return false }
+        let fm = FileManager.default
+        if fm.fileExists(atPath: autosaveURL.path) {
+            let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss-SSS"; f.locale = Locale(identifier: "en_US_POSIX")
+            let when = ((try? fm.attributesOfItem(atPath: autosaveURL.path))?[.modificationDate] as? Date) ?? Date()
+            try? fm.moveItem(at: autosaveURL, to: folder("States").appendingPathComponent("autosave-\(f.string(from: when)).sgstate"))
+            for old in historyURLs().dropFirst(Self.autosaveHistoryLimit) { try? fm.removeItem(at: old) }
+        }
         do { try packed.write(to: autosaveURL, options: .atomic); return true } catch { return false }
     }
 
-    public func readAutosave() -> Data? {
-        guard let packed = try? Data(contentsOf: autosaveURL) else { return nil }
+    private func read(_ url: URL) -> Data? {
+        guard let packed = try? Data(contentsOf: url) else { return nil }
         return try? (packed as NSData).decompressed(using: .lzfse) as Data
     }
 
+    /// The newest autosave.
+    public func readAutosave() -> Data? { read(autosaveURL) }
+
     public var autosaveDate: Date? {
         (try? FileManager.default.attributesOfItem(atPath: autosaveURL.path))?[.modificationDate] as? Date
+    }
+
+    /// Every autosave still kept, newest first (index 0 is the current one).
+    public func autosaveEntries() -> [(date: Date, load: () -> Data?)] {
+        var urls = [autosaveURL] + historyURLs()
+        urls = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+        return urls.compactMap { u in
+            guard let d = (try? FileManager.default.attributesOfItem(atPath: u.path))?[.modificationDate] as? Date else { return nil }
+            return (d, { self.read(u) })
+        }
     }
 
     // MARK: cheats

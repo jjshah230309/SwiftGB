@@ -98,8 +98,10 @@ struct EmulationView: View {
                 ForEach(1...GameStorage.slotCount, id: \.self) { n in Button("Slot \(n)") { model.saveState(slot: n) } }
             }
             Section("Autosave") {
-                Button(model.autosaveDate.map { "Load autosave — \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "Load autosave — none yet") { model.loadAutosave() }
-                    .disabled(model.autosaveDate == nil)
+                if model.autosaveHistory.isEmpty { Text("None yet") }
+                ForEach(Array(model.autosaveHistory.enumerated()), id: \.offset) { i, date in
+                    Button("\(i == 0 ? "Latest" : "Earlier") — \(date.formatted(date: .abbreviated, time: .standard))") { model.loadAutosave(index: i) }
+                }
             }
             Section("Load") {
                 ForEach(1...GameStorage.slotCount, id: \.self) { n in

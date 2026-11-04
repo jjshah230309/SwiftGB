@@ -20,7 +20,7 @@ The emulation cores are original code, written from public hardware documentatio
 
 ```sh
 Scripts/build-app.sh            # builds .build/SwiftGB.app (release, ad-hoc signed)
-Scripts/build-app.sh --dmg      # also makes .build/SwiftGB-1.0.0.dmg
+Scripts/build-app.sh --dmg      # also makes .build/SwiftGB-1.0.1.dmg
 open .build/SwiftGB.app
 ```
 

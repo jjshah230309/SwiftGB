@@ -27,6 +27,8 @@ public final class EmulatorModel {
     public private(set) var isFastForwarding = false
     public private(set) var stateDates: [Int: Date] = [:]
     public private(set) var autosaveDate: Date?
+    /// Dates of every autosave still kept, newest first.
+    public private(set) var autosaveHistory: [Date] = []
     public var showingLink = false
     public private(set) var link: NetworkLink?
     public private(set) var linkStatus = NetworkLink.Status.idle
@@ -123,6 +125,7 @@ public final class EmulatorModel {
         cheats = store.loadCheats()
         refreshStateDates()
         autosaveDate = store.autosaveDate
+        autosaveHistory = store.autosaveEntries().map(\.date)
         keyboardDown = []; padDown = []; isRewinding = false; isFastForwarding = false
         keys = []
         pressedKeys = []
@@ -354,13 +357,16 @@ public final class EmulatorModel {
 
     private func autosaved() {
         autosaveDate = storage?.autosaveDate
+        autosaveHistory = storage?.autosaveEntries().map(\.date) ?? []
         show("Autosaved")
     }
 
     /// Go back to the most recent autosave.
-    public func loadAutosave() {
+    /// `index` 0 is the newest; higher numbers are the older autosaves that are kept.
+    public func loadAutosave(index: Int = 0) {
         guard let session, let storage else { return }
-        guard let state = storage.readAutosave() else { show("There's no autosave yet"); return }
+        let entries = storage.autosaveEntries()
+        guard index < entries.count, let state = entries[index].load() else { show("There's no autosave yet"); return }
         if isPaused { togglePause() }
         session.perform { [weak self] core, _ in
             let model = self

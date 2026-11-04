@@ -9,8 +9,8 @@ BUILD_DIR="${PROJECT_DIR}/.build"
 RELEASE_DIR="${BUILD_DIR}/release"
 APP_NAME="SwiftGB"
 BUNDLE_ID="com.swiftgb.SwiftGB"
-VERSION="1.0.0"
-BUILD_NUMBER="1"
+VERSION="1.0.1"
+BUILD_NUMBER="2"
 
 # Colors for output
 RED='\033[0;31m'
