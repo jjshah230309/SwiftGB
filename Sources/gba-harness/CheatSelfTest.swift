@@ -207,3 +207,30 @@ func cheatSelfTest() -> Int32 {
     print(failures == 0 ? "PASS cheat self-test" : "FAIL \(failures) cheat check(s) failed")
     return failures == 0 ? 0 : 1
 }
+
+/// Memory must stay flat while rewind snapshots are taken on a bare thread (as the emulation thread is), at unlimited speed.
+/// (A run of this in the app once grew to 44 GB: the snapshots' autoreleased buffers were never drained.)
+func rewindLeakTest() -> Int32 {
+    func rss() -> Int {
+        var info = mach_task_basic_info(); var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / 4)
+        let r = withUnsafeMutablePointer(to: &info) { $0.withMemoryRebound(to: integer_t.self, capacity: 1) { task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count) } }
+        return r == KERN_SUCCESS ? Int(info.resident_size) : 0
+    }
+    guard let rom = FileManager.default.contents(atPath: "TestROMs/jsmolka-gba-tests/nes/nes.gba") else { print("FAIL no test ROM"); return 2 }
+    var before = 0, after = 0
+    let done = DispatchSemaphore(value: 0)
+    let t = Thread {
+        let c = GBAConsole(rom: rom), rewind = RewindBuffer()
+        let fb = UnsafeMutablePointer<UInt32>.allocate(capacity: 240 * 160); defer { fb.deallocate() }
+        for _ in 0..<2000 { rewind.record(c); c.runFrame(framebuffer: fb) }        // let the buffer fill
+        before = rss()
+        for _ in 0..<20000 { rewind.record(c); c.runFrame(framebuffer: fb) }       // 4000 more snapshots
+        after = rss()
+        done.signal()
+    }
+    t.stackSize = 8 << 20; t.start(); done.wait()
+    let growthMB = Double(after - before) / 1_048_576
+    print(String(format: "  rss %.0f MB -> %.0f MB over 4000 snapshots (growth %.1f MB)", Double(before) / 1_048_576, Double(after) / 1_048_576, growthMB))
+    print(growthMB < 5 ? "PASS rewind memory stays flat" : "FAIL rewind memory grows")
+    return growthMB < 5 ? 0 : 1
+}

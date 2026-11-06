@@ -21,8 +21,14 @@ public final class RewindBuffer {
     /// Call once before running each forward frame.
     public func record(_ core: EmulatorCore) {
         defer { frames += 1 }
-        guard frames % interval == 0, let state = core.saveState() else { return }
-        guard let packed = try? (state as NSData).compressed(using: .lz4) as Data else { return }
+        guard frames % interval == 0 else { return }
+        // NSData's compression hands back autoreleased objects; the emulation thread never drains a pool, so without this
+        // every snapshot ever taken stays in memory (tens of GB after an hour at unlimited speed).
+        let packed: Data? = autoreleasepool {
+            guard let state = core.saveState() else { return nil }
+            return try? (state as NSData).compressed(using: .lz4) as Data
+        }
+        guard let packed else { return }
         snapshots.append(packed)
         if snapshots.count > capacity { snapshots.removeFirst(snapshots.count - capacity) }
     }
@@ -31,7 +37,11 @@ public final class RewindBuffer {
     @discardableResult
     public func rewind(_ core: EmulatorCore) -> Bool {
         while let packed = snapshots.popLast() {
-            if let state = try? (packed as NSData).decompressed(using: .lz4) as Data, core.loadState(state) {
+            let restored: Bool = autoreleasepool {
+                guard let state = try? (packed as NSData).decompressed(using: .lz4) as Data else { return false }
+                return core.loadState(state)
+            }
+            if restored {
                 frames = 0                                  // going forward again captures right away
                 return true
             }

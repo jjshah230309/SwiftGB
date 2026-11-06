@@ -388,6 +388,11 @@ public final class EmulatorModel {
         panel.allowsOtherFileTypes = true
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        importSave(from: url)
+    }
+
+    private func importSave(from url: URL) {
+        guard let session, let game = activeGame else { return }
         guard let data = try? Data(contentsOf: url), !data.isEmpty else { show("Couldn't read that file"); return }
         guard data.count <= 0x40_0000 else { show("That file is too big to be a save"); return }
         SaveStore.backupExisting(for: game)
@@ -427,11 +432,14 @@ public final class EmulatorModel {
         panel.allowsOtherFileTypes = true
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url, let state = try? Data(contentsOf: url) else { return }
+        // A battery save (.sav) is not a state; if that's what was chosen, import it as the save instead of failing.
+        let isCompressed = StateCodec.decodeFile(state) != state
+        if !isCompressed, [512, 8192, 32768, 65536, 131072].contains(state.count) { importSave(from: url); return }
         if isPaused { togglePause() }
         session.perform { [weak self] core, _ in
             let model = self
             let ok = core.loadState(StateCodec.decodeFile(state))
-            Task { @MainActor in model?.show(ok ? "Loaded \(url.lastPathComponent)" : "That state doesn't fit this game") }
+            Task { @MainActor in model?.show(ok ? "Loaded \(url.lastPathComponent)" : "That isn't a save state for this game") }
         }
     }
 
