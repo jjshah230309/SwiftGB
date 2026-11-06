@@ -169,6 +169,7 @@ func writeWAV(_ path: String, _ pcm: [Int16], rate: Int) {
 func renderFrames(path: String, frames: Int, out: String?, keys: UInt16, script: [(Int, UInt16)] = [], shots: [Int] = [], saveIn: String? = nil, saveOut: String? = nil, wav: String? = nil, stateIn: String? = nil) -> Int32 {
     guard let rom = FileManager.default.contents(atPath: path) else { print("cannot read \(path)"); return 2 }
     let core = GBAConsole(rom: rom)
+    if CommandLine.arguments.contains("--gpu") { print("picture on GPU: \(core.setPictureOnGPU(true))") }
     core.setKeys(GBAKeys(rawValue: keys))
     if let saveIn, let d = FileManager.default.contents(atPath: saveIn) { core.loadSave(d); print("loaded save file (\(d.count) bytes)") }
     if let stateIn, let packed = FileManager.default.contents(atPath: stateIn) {
@@ -358,6 +359,7 @@ if args.contains("--bench-audio") { exit(benchAudio()) }
 if args.contains("--services-selftest") { exit(servicesSelfTest()) }
 if args.contains("--state-selftest") { exit(stateSelfTest()) }
 if args.contains("--control-selftest") { exit(controlSelfTest()) }
+if args.contains("--gpu-selftest") { exit(gpuSelfTest()) }
 if args.contains("--rewind-leak") { exit(rewindLeakTest()) }
 if args.contains("--cheat-selftest") { exit(cheatSelfTest()) }
 if args.contains("--gb-selftest") { exit(gbSelfTest()) }

@@ -72,6 +72,13 @@ public final class EmulatorModel {
         }
         // Settings that change what a running game does take effect immediately.
         settings.$fastForwardSpeed.sink { [weak self] v in self?.session?.setFastForwardSpeed(v) }.store(in: &settingsCancellables)
+        settings.$pictureOnGPU.sink { [weak self] on in
+            self?.session?.perform { core, _ in
+                let ok = core.setPictureOnGPU(on)
+                if on && !ok { Task { @MainActor in self?.show("This Mac can't draw the picture on the GPU; using the CPU") } }
+            }
+        }.store(in: &settingsCancellables)
+        settings.$rewindSeconds.sink { [weak self] v in self?.session?.setRewindSeconds(v) }.store(in: &settingsCancellables)
         settings.$autosave.sink { [weak self] schedule in self?.session?.setAutosave(interval: schedule.interval) }.store(in: &settingsCancellables)
         gamepad.onChange = { [weak self] buttons in
             guard let self else { return }
@@ -120,6 +127,8 @@ public final class EmulatorModel {
         }
         s.setFastForwardSpeed(settings.fastForwardSpeed)
         s.setAutosave(interval: settings.autosave.interval)
+        s.setRewindSeconds(settings.rewindSeconds)
+        if settings.pictureOnGPU { core.setPictureOnGPU(true) }
         session = s
         storage = store
         cheats = store.loadCheats()
@@ -207,7 +216,7 @@ public final class EmulatorModel {
         keys = InputBindings.gbaKeys(for: actions)
         pressedKeys = keys
         session?.setKeys(keys)
-        let rewind = actions.contains(.rewind), forward = actions.contains(.fastForward)
+        let rewind = actions.contains(.rewind) && settings.rewindSeconds > 0, forward = actions.contains(.fastForward)
         if rewind != isRewinding { isRewinding = rewind; session?.setRewinding(rewind) }
         if forward != isFastForwarding { isFastForwarding = forward; session?.setFastForward(forward) }
     }

@@ -19,6 +19,8 @@ public final class EmulationSession: @unchecked Sendable {
     private var fastForwardSpeed = EmulationSpeed.defaultFastForward
     private var autosaveInterval: TimeInterval?
     private var rewinding = false
+    private var rewindSeconds = 12
+    private var rewindDirty = true
     private var quit = false
     private var resetRequested = false
     private var jobs = [Job]()
@@ -83,6 +85,8 @@ public final class EmulationSession: @unchecked Sendable {
     }
 
     public func setFastForward(_ on: Bool) { lock.lock(); fastForward = on; lock.unlock() }
+    /// How much history rewind keeps, in seconds; 0 switches it off and frees its memory.
+    public func setRewindSeconds(_ s: Int) { lock.lock(); rewindSeconds = max(0, s); rewindDirty = true; lock.unlock() }
     public func setRewinding(_ on: Bool) { lock.lock(); rewinding = on; lock.unlock() }
     public func requestReset() { lock.lock(); resetRequested = true; lock.unlock() }
 
@@ -105,16 +109,20 @@ public final class EmulationSession: @unchecked Sendable {
         var nextDeadline = mach_absolute_time()
         var fpsWindowStart = mach_absolute_time()
         var fpsFrames = 0
+        var frameCounter = 0
         var lastSaveCheck = mach_absolute_time()
         var lastAutosave = mach_absolute_time()
 
         while true {
             lock.lock()
-            let q = quit, p = paused, k = keys, s = speed, ff = fastForward, ffSpeed = fastForwardSpeed, rew = rewinding, doReset = resetRequested, autosave = autosaveInterval
+            let q = quit, p = paused, k = keys, s = speed, ff = fastForward, ffSpeed = fastForwardSpeed, rewRequested = rewinding, doReset = resetRequested, autosave = autosaveInterval, newRewind = rewindDirty ? rewindSeconds : nil
             let pending = jobs
             jobs.removeAll()
             resetRequested = false
+            rewindDirty = false
             lock.unlock()
+            if let newRewind { rewindBuffer.configure(seconds: newRewind) }
+            let rew = rewRequested && rewindBuffer.isEnabled          // with rewind off the key does nothing
             if q { break }
             if doReset { core.reset(); rewindBuffer.clear() }
             for job in pending { job(core, UnsafePointer(fb)) }
@@ -142,7 +150,9 @@ public final class EmulationSession: @unchecked Sendable {
                 core.runFrame(framebuffer: fb)
                 EmulationSession.signposter.endInterval("frame", frameSignpost)
                 let work = Double(mach_absolute_time() - frameStart) * Double(timebase.numer) / Double(timebase.denom) / 1e6
-                mailbox.publish(fb, width: w, height: h)
+                // Far above real time most frames are never shown, so don't copy every one to the screen.
+                frameCounter &+= 1
+                if effectiveSpeed <= 4 || frameCounter % 4 == 0 { mailbox.publish(fb, width: w, height: h) }
                 let n = core.readAudio(into: audioScratch, maxFrames: 4096)
                 if effectiveSpeed <= 1.01 { audio.push(audioScratch, frames: n) }     // no audio while fast-forwarding
                 lock.lock()

@@ -24,24 +24,26 @@ public final class GameMTKView: MTKView {
         } else {
             driver?.stop(); driver = nil
             metal?.displaySyncEnabled = true
-            preferredFramesPerSecond = min(settings.refreshRate.target(displayMaximum: displayMaximumRate), RefreshRate.ceiling)
+            preferredFramesPerSecond = min(settings.refreshRate.target(displayMaximum: displayMaximumRate, custom: settings.customRefresh), RefreshRate.ceiling)
             isPaused = false
         }
     }
 
     // MARK: resolution
     private var resolution = RenderResolution.native
+    private var customHeight = 480
 
-    public func applyResolution(_ r: RenderResolution) {
-        guard r != resolution else { return }
+    public func applyResolution(_ r: RenderResolution, customHeight height: Int = 480) {
+        guard r != resolution || (r == .custom && height != customHeight) else { return }
         resolution = r
+        customHeight = height
         updateDrawableSize()
     }
 
     /// Native: the drawable tracks the window in real pixels. Otherwise it is pinned to the chosen height at the window's shape.
     public func updateDrawableSize() {
         guard bounds.width > 0, bounds.height > 0 else { return }
-        if let size = resolution.drawableSize(aspect: Double(bounds.width / bounds.height)) {
+        if let size = resolution.drawableSize(aspect: Double(bounds.width / bounds.height), customHeight: customHeight) {
             autoResizeDrawable = false
             drawableSize = CGSize(width: size.width, height: size.height)
         } else {
@@ -131,8 +133,8 @@ public func refreshSelfTest() -> [String] {
     let metal = view.layer as? CAMetalLayer
     lines.append("layer is a CAMetalLayer: \(metal != nil)")
     for rate in RefreshRate.allCases {
-        view.applyRefresh(RenderSettings(refreshRate: rate))
-        let want = min(rate.target(displayMaximum: view.displayMaximumRate), RefreshRate.ceiling)
+        view.applyRefresh(RenderSettings(refreshRate: rate, customRefresh: 7))
+        let want = min(rate.target(displayMaximum: view.displayMaximumRate, custom: 7), RefreshRate.ceiling)
         lines.append("\(view.preferredFramesPerSecond == want && !view.isPaused && metal?.displaySyncEnabled == true ? "ok  " : "FAIL") \(rate.label): preferredFramesPerSecond=\(view.preferredFramesPerSecond) (display max \(view.displayMaximumRate)) sync=\(metal?.displaySyncEnabled ?? false)")
     }
     view.applyRefresh(RenderSettings(refreshRate: .hz240, unlimited: true))
@@ -150,10 +152,10 @@ public func refreshSelfTest() -> [String] {
     // Resolution: fixed heights at the view's shape (200x150 = 4:3), and back to native.
     view.layout()
     for r in RenderResolution.allCases {
-        view.applyResolution(r)
+        view.applyResolution(r, customHeight: 100)
         view.updateDrawableSize()
         let size = view.drawableSize
-        if let want = r.drawableSize(aspect: 200.0 / 150.0) {
+        if let want = r.drawableSize(aspect: 200.0 / 150.0, customHeight: 100) {
             lines.append("\(Int(size.height) == want.height && Int(size.width) == want.width && !view.autoResizeDrawable ? "ok  " : "FAIL") resolution \(r.label): drawable \(Int(size.width))x\(Int(size.height)) (wanted \(want.width)x\(want.height))")
         } else {
             lines.append("\(view.autoResizeDrawable ? "ok  " : "FAIL") resolution \(r.label): follows the view (\(Int(size.width))x\(Int(size.height)))")
@@ -188,7 +190,7 @@ public struct ScreenView: NSViewRepresentable {
         view.delegate = renderer
         view.onKey = onKey
         view.applyRefresh(settings)
-        view.applyResolution(settings.resolution)
+        view.applyResolution(settings.resolution, customHeight: settings.customHeight)
         return view
     }
 
@@ -196,7 +198,7 @@ public struct ScreenView: NSViewRepresentable {
         context.coordinator.settings = settings
         view.onKey = onKey
         view.applyRefresh(settings)
-        view.applyResolution(settings.resolution)
+        view.applyResolution(settings.resolution, customHeight: settings.customHeight)
     }
 
     public static func dismantleNSView(_ view: GameMTKView, coordinator: ScreenRenderer) { view.stopDriving() }

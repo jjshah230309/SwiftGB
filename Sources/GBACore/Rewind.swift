@@ -5,7 +5,7 @@ import Foundation
 public final class RewindBuffer {
     private var snapshots = [Data]()
     private var frames = 0
-    private let capacity: Int
+    private var capacity: Int
     private let interval: Int
 
     /// `capacity` snapshots, one every `interval` frames: the defaults reach back about 12 seconds.
@@ -14,12 +14,20 @@ public final class RewindBuffer {
         self.interval = interval
     }
 
+    /// Keep `seconds` of history (about 12 snapshots a second of play); 0 stops recording and frees everything.
+    public func configure(seconds: Int) {
+        capacity = max(0, seconds) * 12
+        if capacity == 0 { clear() } else if snapshots.count > capacity { snapshots.removeFirst(snapshots.count - capacity) }
+    }
+    public var isEnabled: Bool { capacity > 0 }
+
     public var depth: Int { snapshots.count }
 
     public func clear() { snapshots.removeAll(); frames = 0 }
 
     /// Call once before running each forward frame.
     public func record(_ core: EmulatorCore) {
+        guard capacity > 0 else { return }
         defer { frames += 1 }
         guard frames % interval == 0 else { return }
         // NSData's compression hands back autoreleased objects; the emulation thread never drains a pool, so without this

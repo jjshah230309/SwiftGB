@@ -509,6 +509,11 @@ if only == nil || only == "render" {
     check("16K keeps the window's shape", RenderResolution.k16.drawableSize(aspect: 16.0 / 9.0).map { $0.width == 15360 && $0.height == 8640 } ?? false)
     check("an ultra-wide window at 16K is capped, not rejected", RenderResolution.k16.drawableSize(aspect: 5)?.width == 16384)
     check("native has no fixed size", RenderResolution.native.drawableSize(aspect: 1.5) == nil)
+    check("144p is 144 pixels high at the window's shape", RenderResolution.p144.drawableSize(aspect: 16.0 / 9.0).map { $0.height == 144 && $0.width == 256 } ?? false)
+    check("custom heights are used as typed", RenderResolution.custom.drawableSize(aspect: 2, customHeight: 90).map { $0.height == 90 && $0.width == 180 } ?? false)
+    check("a custom height can't be 0 or above Metal's limit", RenderResolution.custom.drawableSize(aspect: 1, customHeight: 0)?.height == 1 && RenderResolution.custom.drawableSize(aspect: 1, customHeight: 99999)?.height == 16384)
+    check("refresh: 1 Hz exists and custom values are clamped to 1...240", RefreshRate.hz1.target(displayMaximum: 120) == 1 && RefreshRate.custom.target(displayMaximum: 120, custom: 0) == 1 && RefreshRate.custom.target(displayMaximum: 120, custom: 7) == 7 && RefreshRate.custom.target(displayMaximum: 120, custom: 9000) == 240)
+    check("refresh: Display follows the screen", RefreshRate.display.target(displayMaximum: 120) == 120)
 }
 
 print(failures == 0 ? "PASS: UI engine checks" : "FAIL: \(failures) UI engine check(s)")

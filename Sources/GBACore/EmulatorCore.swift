@@ -53,6 +53,8 @@ public protocol EmulatorCore: AnyObject {
 
     /// Plug a link cable in (or with nil, unplug it).
     func attachLink(_ link: SerialLink?)
+    /// Draw the picture on the GPU instead of the CPU (Game Boy Advance only). Returns false if that isn't possible.
+    @discardableResult func setPictureOnGPU(_ on: Bool) -> Bool
 }
 
 public extension EmulatorCore {
@@ -63,6 +65,7 @@ public extension EmulatorCore {
     func setCheats(_ writes: [CheatWrite]) {}
     func setCheatProgram(_ program: CheatProgram) {}
     func attachLink(_ link: SerialLink?) {}
+    @discardableResult func setPictureOnGPU(_ on: Bool) -> Bool { false }
 }
 
 public enum GBAConstants {

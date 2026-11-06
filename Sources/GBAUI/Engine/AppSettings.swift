@@ -16,6 +16,13 @@ public final class AppSettings: ObservableObject {
     /// Present as fast as the GPU allows. Independent of emulation speed.
     @Published public var unlimitedRefresh: Bool { didSet { defaults.set(unlimitedRefresh, forKey: "unlimitedRefresh") } }
     @Published public var resolution: RenderResolution { didSet { defaults.set(resolution.rawValue, forKey: "resolution") } }
+    /// The typed-in values behind "Custom…" for resolution (pixels high) and refresh rate (pictures per second).
+    @Published public var customHeight: Int { didSet { defaults.set(customHeight, forKey: "customHeight") } }
+    @Published public var customRefresh: Int { didSet { defaults.set(customRefresh, forKey: "customRefresh") } }
+    /// Let the GPU draw the Game Boy Advance picture (experimental; uses less CPU).
+    @Published public var pictureOnGPU: Bool { didSet { defaults.set(pictureOnGPU, forKey: "pictureOnGPU") } }
+    /// Seconds of play that rewind can step back through; 0 turns rewind off, which also frees its memory.
+    @Published public var rewindSeconds: Int { didSet { defaults.set(rewindSeconds, forKey: "rewindSeconds") } }
     /// How fast the hold-to-fast-forward key runs the game (a power of two, or unlimited).
     @Published public var fastForwardSpeed: Double { didSet { defaults.set(EmulationSpeed.encode(fastForwardSpeed), forKey: "fastForwardSpeed") } }
     @Published public var autosave: AutosaveSchedule { didSet { if let d = autosave.encoded() { defaults.set(d, forKey: "autosave") } } }
@@ -33,11 +40,15 @@ public final class AppSettings: ObservableObject {
         muted = d.object(forKey: "muted") as? Bool ?? false
         showStatistics = d.object(forKey: "showStatistics") as? Bool ?? false
         resolution = RenderResolution(rawValue: d.object(forKey: "resolution") as? Int ?? 0) ?? .native
+        customHeight = RenderResolution.clamp(d.object(forKey: "customHeight") as? Int ?? 480)
+        customRefresh = RefreshRate.clamp(d.object(forKey: "customRefresh") as? Int ?? 30)
+        pictureOnGPU = d.object(forKey: "pictureOnGPU") as? Bool ?? false
+        rewindSeconds = max(0, d.object(forKey: "rewindSeconds") as? Int ?? 12)
         fastForwardSpeed = EmulationSpeed.decode(d.object(forKey: "fastForwardSpeed") as? Double, fallback: EmulationSpeed.defaultFastForward)
         autosave = AutosaveSchedule.decode(d.data(forKey: "autosave")) ?? AutosaveSchedule()
     }
 
     public var renderSettings: RenderSettings {
-        RenderSettings(filter: filter, integerScaling: integerScaling, scanlines: Float(scanlines), refreshRate: refreshRate, unlimited: unlimitedRefresh, resolution: resolution)
+        RenderSettings(filter: filter, integerScaling: integerScaling, scanlines: Float(scanlines), refreshRate: refreshRate, unlimited: unlimitedRefresh, resolution: resolution, customHeight: customHeight, customRefresh: customRefresh)
     }
 }

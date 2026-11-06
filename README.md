@@ -8,7 +8,7 @@ The emulation cores are original code, written from public hardware documentatio
 
 - **Game Boy Advance:** ARM7TDMI (ARM and Thumb), full video (all modes, sprites, windows, blending), four timers, four DMA channels, all six sound channels, SRAM / Flash / EEPROM saves, the cartridge clock, and the BIOS services games rely on.
 - **Game Boy and Game Boy Color:** SM83 CPU, MBC1/2/3 (with clock)/5, original and Color video, double-speed mode, HDMA, sound, battery saves.
-- **App features:** save states (9 slots, plus load/save to any file) and autosave, importing and exporting `.sav` files, rewind, cheats for every GBA cheat device (below), screenshots, MP4 recording, fast-forward from 2× up to unlimited, controller support with remapping, a link cable over the local network (GBA up to four players, Game Boy two), and a statistics overlay.
+- **App features:** save states (9 slots, plus load/save to any file) and autosave, importing and exporting `.sav` files, rewind, cheats for every GBA cheat device (below), screenshots, MP4 recording, fast-forward from 2× up to unlimited, custom resolution (down to 1 pixel high) and refresh rate (down to 1 a second), rewind that can be switched off, an optional GPU picture renderer, controller support with remapping, a link cable over the local network (GBA up to four players, Game Boy two), and a statistics overlay.
 - **Display:** drawn natively at any size up to 16K, any refresh rate up to 240 Hz, with an optional unlimited presentation rate that is independent of emulation speed.
 
 ## Requirements
@@ -20,7 +20,7 @@ The emulation cores are original code, written from public hardware documentatio
 
 ```sh
 Scripts/build-app.sh            # builds .build/SwiftGB.app (release, ad-hoc signed)
-Scripts/build-app.sh --dmg      # also makes .build/SwiftGB-1.0.3.dmg
+Scripts/build-app.sh --dmg      # also makes .build/SwiftGB-1.0.4.dmg
 open .build/SwiftGB.app
 ```
 
@@ -85,3 +85,7 @@ Master/hook/ID codes are accepted and ignored (cheats are applied once per frame
 The encryption itself is written from the published description of the algorithm. The two 256-byte lookup tables the devices use to derive new keys after a `DEADFACE` code are fixed constants copied from Parasyte's GPL-licensed GSAcrypt; they sit alone in `Sources/GBACore/CheatTables.swift`. Everything else is original.
 
 Details that were ambiguous in the documentation and so are my best reading: the number of bytes an AR v3 fill writes (`x + 1`), how far a CodeBreaker slide's address steps (twice `iiii`, for 16-bit values), and that a conditional counts code lines.
+
+## Picture on the GPU (experimental)
+
+Settings ▸ Video ▸ *Draw picture on the GPU* hands the Game Boy Advance picture to a Metal compute pass instead of the CPU renderer, which takes roughly a quarter off the CPU load. The CPU renderer stays the default and the reference: a self-test draws 1,500 random video setups (every mode, windows, blending, mosaic, sprites, affine) both ways and requires identical pixels. The differences are inherent: the picture is one frame late, and colour, tile or sprite changes a game makes *during* a frame show from the next frame (register effects such as scrolling and windows are recorded per line and work). The CPU-side game emulation itself cannot run on the GPU.

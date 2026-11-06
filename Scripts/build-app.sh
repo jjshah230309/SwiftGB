@@ -9,7 +9,7 @@ BUILD_DIR="${PROJECT_DIR}/.build"
 RELEASE_DIR="${BUILD_DIR}/release"
 APP_NAME="SwiftGB"
 BUNDLE_ID="com.swiftgb.SwiftGB"
-VERSION="1.0.3"
+VERSION="1.0.4"
 BUILD_NUMBER="2"
 
 # Colors for output

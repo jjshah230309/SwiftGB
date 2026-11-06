@@ -8,6 +8,8 @@ public final class GBAConsole: EmulatorCore {
     private var frameTarget: UInt64 = 0
     private let cheats = CheatEngine()
     private var linkAttached: SerialLink?
+    private var pictureOnGPU = false
+    private var pictureOnGPUPipelined = true
 
     public var statusNote: String? { nil }
     public var screenWidth: Int { GBAConstants.screenWidth }
@@ -30,11 +32,17 @@ public final class GBAConsole: EmulatorCore {
         system = GBASystem()
         system.load(rom: rom, bios: bios)
         system.bus.link = linkAttached                // a reset doesn't unplug the cable
+        if pictureOnGPU { system.bus.ppu.setUsesGPU(true, pipelined: pictureOnGPUPipelined) }
         frameTarget = UInt64(160 * 1232)              // a frame ends as VBlank begins, so input is sampled as late as possible
         if let kept { system.bus.cart.loadSave(kept); if wasDirty { system.bus.cart.markDirty() } }
     }
 
     public func setCheats(_ writes: [CheatWrite]) { cheats.set(.fromWrites(writes), bus: system.bus) }
+    /// Draw the picture on the GPU (true) or the CPU (false). Returns false if the GPU isn't usable.
+    @discardableResult
+    public func setPictureOnGPU(_ on: Bool) -> Bool { setPictureOnGPU(on, pipelined: true) }
+    @discardableResult
+    public func setPictureOnGPU(_ on: Bool, pipelined: Bool) -> Bool { pictureOnGPU = on; pictureOnGPUPipelined = pipelined; return system.bus.ppu.setUsesGPU(on, pipelined: pipelined) }
     public func setCheatProgram(_ program: CheatProgram) { cheats.set(program, bus: system.bus) }
     public func attachLink(_ link: SerialLink?) { linkAttached = link; system.bus.link = link }
 
@@ -62,6 +70,7 @@ public final class GBAConsole: EmulatorCore {
         while bus.cycles < frameTarget { system.cpu.step() }
         frameTarget += UInt64(GBAConstants.cyclesPerFrame)
         if !cheats.isEmpty { cheats.apply(to: bus) }
+        bus.ppu.finishFrame()
         framebuffer.update(from: bus.ppu.frame, count: GBAConstants.screenWidth * GBAConstants.screenHeight)
     }
 

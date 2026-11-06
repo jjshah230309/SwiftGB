@@ -204,6 +204,22 @@ func cheatSelfTest() -> Int32 {
         return console.machine.bus.peek32(0x0300_7E70) == 1
     }())
 
+    // --- rewind can be switched off, and resized -------------------------------------------------------
+    do {
+        let console = GBAConsole(rom: rom), rb = RewindBuffer()
+        for _ in 0..<50 { rb.record(console); console.runFrame(framebuffer: fb) }
+        check("rewind records by default", rb.depth == 10 && rb.isEnabled)
+        rb.configure(seconds: 0)
+        check("seconds = 0 turns rewind off and frees the history", !rb.isEnabled && rb.depth == 0)
+        for _ in 0..<50 { rb.record(console); console.runFrame(framebuffer: fb) }
+        check("…and nothing is recorded while it's off", rb.depth == 0 && !rb.rewind(console))
+        rb.configure(seconds: 1)
+        for _ in 0..<600 { rb.record(console); console.runFrame(framebuffer: fb) }
+        check("a 1-second history keeps about 12 snapshots", rb.depth == 12, "\(rb.depth)")
+        rb.configure(seconds: 0); rb.configure(seconds: 3)
+        check("it can be turned back on", rb.isEnabled)
+    }
+
     print(failures == 0 ? "PASS cheat self-test" : "FAIL \(failures) cheat check(s) failed")
     return failures == 0 ? 0 : 1
 }

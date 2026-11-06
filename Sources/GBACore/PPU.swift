@@ -15,6 +15,8 @@ public final class PPU {
     private let objPrio = UnsafeMutablePointer<UInt8>.allocate(capacity: 240)
     private let objSemi = UnsafeMutablePointer<Bool>.allocate(capacity: 240)
     private let objWindow = UnsafeMutablePointer<Bool>.allocate(capacity: 240)
+    private let order = UnsafeMutablePointer<Int>.allocate(capacity: 4)
+    private let orderPrio = UnsafeMutablePointer<Int>.allocate(capacity: 4)
 
     /// Internal affine reference points for BG2 (index 0) and BG3 (index 1); they advance by PB/PD every line.
     var refX: [Int32] = [0, 0]
@@ -24,6 +26,27 @@ public final class PPU {
         self.bus = bus
         io = bus.io; vram = bus.vram; pram = bus.pram; oam = bus.oam
         frame.initialize(repeating: 0xFF00_0000, count: 240 * 160)
+    }
+
+    /// GPU picture drawing (nil while the CPU renderer is in use, or if there is no usable GPU).
+    private var gpu: GPUPictureUnit?
+    private var wantsGPU = false
+
+    /// Choose who draws the picture: the scanline renderer on the CPU (exact, the default) or a compute pass on the GPU.
+    /// Returns false if the GPU was asked for but isn't usable (the CPU renderer then stays in charge).
+    @discardableResult
+    public func setUsesGPU(_ on: Bool, pipelined: Bool = true) -> Bool {
+        wantsGPU = on
+        if !on { gpu = nil; return true }
+        if gpu == nil { gpu = GPUPictureUnit() }
+        gpu?.pipelined = pipelined
+        return gpu != nil
+    }
+    public var usesGPU: Bool { gpu != nil }
+
+    /// Called once the frame's lines have all been emulated: in GPU mode this is when the picture is actually drawn.
+    public func finishFrame() {
+        gpu?.render(vram: vram, pram: pram, oam: oam, frame: frame)
     }
 
     func reset() {
@@ -53,6 +76,11 @@ public final class PPU {
 
     // MARK: scanline
     public func renderLine(_ line: Int) {
+        if let gpu {                                                   // record this line's setup; the GPU draws at frame end
+            gpu.record(line: line, io: io, refX: refX, refY: refY)
+            advanceReferences()
+            return
+        }
         let dispcnt = reg(0)
         let out = frame + line * 240
         if dispcnt & 0x80 != 0 {                                       // forced blank: white
@@ -113,16 +141,20 @@ public final class PPU {
         let wmask = size & 1 != 0 ? 511 : 255
         let hmask = size & 2 != 0 ? 511 : 255
         let y = (mosaicLine(n, line) + vofs) & hmask
+        var column = -1, entry = 0                    // the map entry only changes every 8 pixels
         for x in 0..<240 {
             let px = (x + hofs) & wmask
-            var block = 0
-            switch size {
-            case 1: block = px >> 8
-            case 2: block = y >> 8
-            case 3: block = (px >> 8) + ((y >> 8) << 1)
-            default: break
+            if px >> 3 != column {
+                column = px >> 3
+                var block = 0
+                switch size {
+                case 1: block = px >> 8
+                case 2: block = y >> 8
+                case 3: block = (px >> 8) + ((y >> 8) << 1)
+                default: break
+                }
+                entry = Int(ld16(vram, mapBase + block * 0x800 + (((y & 255) >> 3) * 32 + ((px & 255) >> 3)) * 2))
             }
-            let entry = Int(ld16(vram, mapBase + block * 0x800 + (((y & 255) >> 3) * 32 + ((px & 255) >> 3)) * 2))
             var fx = px & 7, fy = y & 7
             if entry & 0x400 != 0 { fx = 7 - fx }
             if entry & 0x800 != 0 { fy = 7 - fy }
@@ -273,8 +305,16 @@ public final class PPU {
             let v = reg(0x46); in1y = within(line, v >> 8, v & 255)
             w1x1 = reg(0x42) >> 8; w1x2 = reg(0x42) & 255
         }
-        let bgPrio = (0..<4).map { UInt8(reg(8 + 2 * $0) & 3) }
-        let bgOn = (0..<4).map { dispcnt & (0x100 << $0) != 0 }
+        // Enabled backgrounds in drawing order (priority, then number), so the per-pixel search is a short walk.
+        let order = self.order, orderPrio = self.orderPrio
+        var orderCount = 0
+        for p in 0..<4 {
+            for n in 0..<4 where dispcnt & (0x100 << n) != 0 && reg(8 + 2 * n) & 3 == p {
+                order[orderCount] = n; orderPrio[orderCount] = p; orderCount += 1
+            }
+        }
+        let clear = PPU.clear
+        let bg = self.bg, objColor = self.objColor, objPrio = self.objPrio, objSemi = self.objSemi
 
         for x in 0..<240 {
             var mask = 0x3F
@@ -285,17 +325,26 @@ public final class PPU {
                 else { mask = winout & 0xFF }
             }
 
+            // The top pixel, and the one beneath it only when blending needs it.
             var topColor = backdrop, topLayer = 5, secondColor = backdrop, secondLayer = 5
-            var found = 0
-            search: for p in 0..<4 {
-                if mask & 0x10 != 0 && objColor[x] != PPU.clear && Int(objPrio[x]) == p {
-                    if found == 0 { topColor = objColor[x]; topLayer = 4; found = 1 }
-                    else { secondColor = objColor[x]; secondLayer = 4; break search }
-                }
-                for n in 0..<4 where bgOn[n] && mask & (1 << n) != 0 && Int(bgPrio[n]) == p && bg[n * 240 + x] != PPU.clear {
-                    if found == 0 { topColor = bg[n * 240 + x]; topLayer = n; found = 1 }
-                    else { secondColor = bg[n * 240 + x]; secondLayer = n; break search }
-                }
+            let objVisible = mask & 0x10 != 0 && objColor[x] != clear
+            let objP = objVisible ? Int(objPrio[x]) : 4
+            var objPending = objVisible
+            var found = 0, k = 0
+            while true {
+                var layer = -1, c: UInt16 = 0
+                if objPending && (k >= orderCount || objP <= orderPrio[k]) {
+                    layer = 4; c = objColor[x]; objPending = false
+                } else if k < orderCount {
+                    let n = order[k]; k += 1
+                    if mask & (1 << n) != 0 { let v = bg[n * 240 + x]; if v != clear { layer = n; c = v } }
+                    if layer < 0 { continue }
+                } else { break }
+                if found == 0 {
+                    topColor = c; topLayer = layer; found = 1
+                    let wantSecond = mask & 0x20 != 0 && ((layer == 4 && objSemi[x]) || (effect == 1 && first & (1 << layer) != 0))
+                    if !wantSecond { break }
+                } else { secondColor = c; secondLayer = layer; break }
             }
 
             var color = topColor
